@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>卡诺图学习器 · Karnaugh Map Learner</title>
+<style>
+  :root{
+    --bg:#f4f6fb;
+    --panel:#ffffff;
+    --ink:#1f2937;
+    --muted:#6b7280;
+    --line:#e2e8f0;
+    --accent:#2563eb;
+    --accent-soft:#e0edff;
+    --one:#1d4ed8;
+    --zero:#94a3b8;
+    --x:#ea580c;
+    --shadow:0 1px 2px rgba(15,23,42,.06),0 6px 20px rgba(15,23,42,.06);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:"Segoe UI",system-ui,"Microsoft YaHei",sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{max-width:1240px;margin:0 auto;padding:20px 18px 48px}
+  header h1{font-size:22px;margin:0 0 4px}
+  header p{margin:0;color:var(--muted);font-size:13px}
+  .toolbar{
+    display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:12px 14px;margin:16px 0;box-shadow:var(--shadow);
+  }
+  .group{display:flex;align-items:center;gap:6px}
+  .group>.lbl{font-size:12px;color:var(--muted);margin-right:2px}
+  button,select{
+    font:inherit;font-size:13px;border:1px solid var(--line);background:#fff;
+    color:var(--ink);border-radius:9px;padding:6px 11px;cursor:pointer;
+    transition:.15s;
+  }
+  button:hover,select:hover{border-color:#c7d2fe;background:#f8faff}
+  button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  .brushsel button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  .grid{
+    display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;
+  }
+  .panel{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:14px 16px 16px;box-shadow:var(--shadow);
+  }
+  .panel h2{font-size:14px;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+  .panel h2 .tag{
+    font-size:11px;font-weight:500;color:var(--accent);background:var(--accent-soft);
+    padding:2px 8px;border-radius:20px;
+  }
+  /* truth table */
+  table.tt{border-collapse:collapse;font-size:14px}
+  table.tt th,table.tt td{border:1px solid var(--line);text-align:center;padding:0}
+  table.tt th{padding:6px 12px;font-size:12px;color:var(--muted);background:#f8fafc}
+  table.tt td.bit{width:30px;height:30px;color:#475569}
+  table.tt td.fcell{
+    width:38px;height:30px;cursor:pointer;font-weight:700;
+    transition:.12s;user-select:none;
+  }
+  table.tt td.fcell[data-v="1"]{color:var(--one);background:#eff4ff}
+  table.tt td.fcell[data-v="0"]{color:var(--zero)}
+  table.tt td.fcell[data-v="x"]{color:var(--x);background:#fff7ed}
+  table.tt td.fcell:hover{outline:2px solid var(--accent);outline-offset:-2px}
+  /* kmap */
+  .kmap-wrap{position:relative}
+  .kmap-cell{
+    position:absolute;display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--line);border-radius:8px;cursor:pointer;
+    font-weight:700;font-size:19px;transition:.12s;user-select:none;background:#fff;
+  }
+  .kmap-cell:hover{box-shadow:0 0 0 2px var(--accent) inset}
+  .kmap-cell[data-v="0"]{color:var(--zero)}
+  .kmap-cell[data-v="1"]{color:var(--one)}
+  .kmap-cell[data-v="x"]{color:var(--x)}
+  .kmap-head{
+    position:absolute;display:flex;align-items:center;justify-content:center;
+    font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;
+  }
+  .kmap-corner{
+    position:absolute;display:flex;align-items:center;justify-content:center;
+    font-size:12px;color:var(--ink);font-weight:600;background:#f8fafc;
+    border-radius:8px;text-align:center;line-height:1.25;
+  }
+  .kmap-overlay{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+  .kmap-overlay .dim{opacity:.08}
+  .kmap-overlay *{transition:opacity .15s}
+  .kmap-caption{font-size:12px;color:var(--muted);margin-top:8px}
+  /* expression */
+  .expr{font-size:15px;line-height:1.7}
+  .expr .row{margin:0 0 8px}
+  .expr .k{font-size:12px;color:var(--muted);display:block;margin-bottom:2px}
+  .lit.bar{text-decoration:overline}
+  .formula{font-size:17px;font-weight:600;letter-spacing:.3px}
+  .formula .sum{color:var(--accent)}
+  .pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:12px;background:#f1f5f9;color:#475569;margin-left:6px}
+  .grouplist{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+  .group-item{
+    display:flex;align-items:center;gap:9px;padding:6px 9px;border-radius:9px;
+    border:1px solid var(--line);cursor:pointer;font-size:14px;transition:.12s;
+  }
+  .group-item:hover{background:#f8faff;border-color:#c7d2fe}
+  .swatch{width:14px;height:14px;border-radius:4px;flex:0 0 auto}
+  .group-item .meta{margin-left:auto;font-size:11px;color:var(--muted)}
+  .group-item.unused{opacity:.55}
+  .empty{color:var(--muted);font-size:13px}
+  .hint{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6}
+  footer{margin-top:22px;font-size:12px;color:var(--muted);line-height:1.7}
+  kbd{background:#f1f5f9;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:11px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>卡诺图学习器</h1>
+    <p>在真值表、卡诺图与布尔表达式之间实时对照 —— 点击格子切换取值，观察化简过程</p>
+  </header>
+
+  <div class="toolbar">
+    <div class="group" id="varGroup">
+      <span class="lbl">变量数</span>
+      <button data-n="2">2</button>
+      <button data-n="3">3</button>
+      <button data-n="4">4</button>
+    </div>
+    <div class="group brushsel" id="brushGroup">
+      <span class="lbl">画笔</span>
+      <button data-brush="toggle">切换</button>
+      <button data-brush="1">1</button>
+      <button data-brush="0">0</button>
+      <button data-brush="x">X</button>
+    </div>
+    <div class="group">
+      <span class="lbl">示例</span>
+      <select id="presetSel">
+        <option value="">选择示例…</option>
+        <option value="zero">全部清零</option>
+        <option value="one">全部为 1</option>
+        <option value="random">随机填充</option>
+        <option value="checker">棋盘（不可化简）</option>
+        <option value="half">前半区为 1</option>
+        <option value="pair">相邻两格为 1</option>
+      </select>
+    </div>
+    <div class="group">
+      <button id="clearBtn">清空</button>
+      <button id="primesBtn" class="toggle">显示全部质蕴含项</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>真值表 <span class="tag">布尔值</span></h2>
+      <div id="truthTable"></div>
+    </section>
+
+    <section class="panel">
+      <h2>卡诺图 <span class="tag">图形</span></h2>
+      <div class="kmap-wrap" id="kmap"></div>
+      <div class="kmap-caption" id="kmapCaption"></div>
+    </section>
+
+    <section class="panel">
+      <h2>表达式与圈组 <span class="tag">化简</span></h2>
+      <div class="expr" id="expr"></div>
+    </section>
+  </div>
+
+  <footer>
+    用法：用画笔点击真值表 <b>F</b> 列或卡诺图格子；<kbd>X</kbd> 表示无关项（don't care）。
+    每个配色边框代表一个蕴含项（圈组），鼠标移到右侧列表可高亮对应圈组。
+  </footer>
+</div>
+
+<script>
+const NAMES=['A','B','C','D'];
+const PALETTE=['#ef4444','#3b82f6','#22c55e','#eab308','#a855f7','#ec4899','#14b8a6','#f97316','#6366f1','#84cc16'];
+
+const HEAD=46, CELL=62, PAD=3;
+
+const state={
+  n:3,
+  cells:new Array(8).fill('0'),
+  brush:'toggle',
+  showAllPrimes:false,
+  hovered:null,
+};
+
+function grayCode(bits){
+  const n=1<<bits,res=[];
+  for(let i=0;i<n;i++) res.push(i^(i>>1));
+  return res;
+}
+
+function layout(n){
+  let rowBits,colBits;
+  if(n===2){rowBits=1;colBits=1;}
+  else if(n===3){rowBits=1;colBits=2;}
+  else {rowBits=2;colBits=2;}
+  return {
+    rowBits,colBits,
+    rowVars:NAMES.slice(0,rowBits),
+    colVars:NAMES.slice(rowBits,n),
+    grayRow:grayCode(rowBits),
+    grayCol:grayCode(colBits),
+    rows:1<<rowBits,
+    cols:1<<colBits,
+  };
+}
+
+function allPatterns(n){
+  const res=[];
+  (function rec(i,cur){
+    if(i===n){res.push(cur.slice());return;}
+    for(const v of [0,1,-1]){cur.push(v);rec(i+1,cur);cur.pop();}
+  })(0,[]);
+  return res;
+}
+
+function patternCells(pattern,n){
+  const total=1<<n,cells=[];
+  for(let m=0;m<total;m++){
+    let ok=true;
+    for(let i=0;i<n;i++){
+      if(pattern[i]===-1) continue;
+      if(((m>>(n-1-i))&1)!==pattern[i]){ok=false;break;}
+    }
+    if(ok) cells.push(m);
+  }
+  return cells;
+}
+
+function subset(a,b){ for(const x of a) if(!b.has(x)) return false; return true; }
+
+function analyze(){
+  const n=state.n,total=1<<n,ones=[];
+  for(let m=0;m<total;m++) if(state.cells[m]==='1') ones.push(m);
+
+  const valid=[];
+  for(const p of allPatterns(n)){
+    const cells=patternCells(p,n);
+    let allMember=true,hasOne=false;
+    for(const c of cells){
+      if(state.cells[c]==='0'){allMember=false;break;}
+      if(state.cells[c]==='1') hasOne=true;
+    }
+    if(allMember&&hasOne) valid.push({pattern:p,cells,set:new Set(cells)});
+  }
+  const primes=valid.filter(a=>!valid.some(b=>b.set.size>a.set.size&&subset(a.set,b.set)));
+  const cover=minimalCover(primes,ones);
+  return {ones,primes,cover};
+}
+
+function minimalCover(primes,ones){
+  if(ones.length===0) return [];
+  const cand=ones.map(o=>{
+    const arr=[];
+    primes.forEach((p,i)=>{ if(p.set.has(o)) arr.push(i); });
+    return arr;
+  });
+  let best=null;
+  const chosen=new Set(),covered=new Set();
+  (function rec(){
+    if(best&&chosen.size>=best.length) return;
+    let tk=-1,tc=null;
+    for(let k=0;k<ones.length;k++){
+      if(covered.has(ones[k])) continue;
+      if(tk===-1||cand[k].length<tc.length){tk=k;tc=cand[k];}
+      if(tc.length<=1) break;
+    }
+    if(tk===-1){best=[...chosen];return;}
+    for(const pi of tc){
+      if(chosen.has(pi)) continue;
+      const added=[];
+      for(const c of primes[pi].cells) if(!covered.has(c)){covered.add(c);added.push(c);}
+      chosen.add(pi);
+      rec();
+      chosen.delete(pi);
+      for(const c of added) covered.delete(c);
+    }
+  })();
+  return best||[];
+}
+
+let ANALYSIS=null;
+
+function buildGroups(){
+  const {primes,cover}=ANALYSIS;
+  const coverSet=new Set(cover);
+  let list;
+  if(state.showAllPrimes){
+    list=primes.map((p,i)=>({pattern:p.pattern,cells:p.cells,set:p.set,used:coverSet.has(i)}));
+  }else{
+    list=cover.map(i=>({pattern:primes[i].pattern,cells:primes[i].cells,set:primes[i].set,used:true}));
+  }
+  list.sort((a,b)=>b.cells.length-a.cells.length||Math.min(...a.cells)-Math.min(...b.cells));
+  list.forEach((g,i)=>{g.color=PALETTE[i%PALETTE.length];g.id=i;});
+  return list;
+}
+
+function productHTML(pattern){
+  const parts=[];
+  pattern.forEach((v,i)=>{
+    if(v===-1) return;
+    parts.push(v===0?`<span class="lit bar">${NAMES[i]}</span>`:`<span class="lit">${NAMES[i]}</span>`);
+  });
+  return parts.length?parts.join('&nbsp;'):'1';
+}
+
+function applyBrush(m){
+  const cur=state.cells[m];
+  let next;
+  if(state.brush==='toggle'){
+    next = cur==='0'?'1' : cur==='1'?'x' : '0';
+  }else{
+    next = state.brush;
+  }
+  state.cells[m]=next;
+  renderAll();
+}
+
+function renderTruth(){
+  const n=state.n,total=1<<n;
+  let html='<table class="tt"><thead><tr>';
+  for(let i=0;i<n;i++) html+=`<th>${NAMES[i]}</th>`;
+  html+='<th>F</th></tr></thead><tbody>';
+  for(let m=0;m<total;m++){
+    html+='<tr>';
+    for(let i=0;i<n;i++) html+=`<td class="bit">${(m>>(n-1-i))&1}</td>`;
+    const v=state.cells[m];
+    html+=`<td class="fcell" data-m="${m}" data-v="${v}">${v==='x'?'X':v}</td>`;
+    html+='</tr>';
+  }
+  html+='</tbody></table>';
+  const el=document.getElementById('truthTable');
+  el.innerHTML=html;
+  el.querySelectorAll('.fcell').forEach(td=>{
+    td.addEventListener('click',()=>applyBrush(+td.dataset.m));
+  });
+}
+
+function renderKMap(groups){
+  const L=layout(state.n);
+  const W=HEAD+L.cols*CELL, H=HEAD+L.rows*CELL;
+  const wrap=document.getElementById('kmap');
+  wrap.style.width=W+'px';
+  wrap.style.height=H+'px';
+
+  let cells='';
+  for(let r=0;r<L.rows;r++){
+    for(let c=0;c<L.cols;c++){
+      const m=(L.grayRow[r]<<L.colBits)|L.grayCol[c];
+      const x=HEAD+c*CELL+PAD, y=HEAD+r*CELL+PAD, s=CELL-PAD*2;
+      const v=state.cells[m];
+      cells+=`<div class="kmap-cell" data-v="${v}" data-m="${m}" style="left:${x}px;top:${y}px;width:${s}px;height:${s}px">${v==='x'?'X':v}</div>`;
+    }
+  }
+
+  let heads=`<div class="kmap-corner" style="left:0;top:0;width:${HEAD}px;height:${HEAD}px">${L.rowVars.join('')}<br>\\ ${L.colVars.join('')}</div>`;
+  for(let c=0;c<L.cols;c++){
+    const bits=L.grayCol[c].toString(2).padStart(L.colBits,'0');
+    heads+=`<div class="kmap-head" style="left:${HEAD+c*CELL}px;top:0;width:${CELL}px;height:${HEAD}px">${bits}</div>`;
+  }
+  for(let r=0;r<L.rows;r++){
+    const bits=L.grayRow[r].toString(2).padStart(L.rowBits,'0');
+    heads+=`<div class="kmap-head" style="left:0;top:${HEAD+r*CELL}px;width:${HEAD}px;height:${CELL}px">${bits}</div>`;
+  }
+
+  const fills=[],strokes=[];
+  const byCell=new Map();
+  groups.forEach(g=>{
+    g.cells.forEach(m=>{
+      if(!byCell.has(m)) byCell.set(m,[]);
+      byCell.get(m).push(g);
+    });
+  });
+
+  byCell.forEach((gs,m)=>{
+    const r=Math.floor(L.grayRow.indexOf(m>>L.colBits));
+    const c=L.grayCol.indexOf(m&((1<<L.colBits)-1));
+    gs.forEach((g,k)=>{
+      const d=PAD+2+k*3;
+      const x0=HEAD+c*CELL+d, y0=HEAD+r*CELL+d;
+      const x1=HEAD+(c+1)*CELL-d, y1=HEAD+(r+1)*CELL-d;
+      fills.push(`<rect data-gid="${g.id}" x="${x0}" y="${y0}" width="${x1-x0}" height="${y1-y0}" rx="6" fill="${g.color}" opacity="0.13"/>`);
+      const nb={
+        up:[(r-1+L.rows)%L.rows,c],
+        down:[(r+1)%L.rows,c],
+        left:[r,(c-1+L.cols)%L.cols],
+        right:[r,(c+1)%L.cols],
+      };
+      const inDir=(rr,cc)=>g.set.has((L.grayRow[rr]<<L.colBits)|L.grayCol[cc]);
+      if(!inDir(nb.up[0],nb.up[1])) strokes.push(line(x0,y0,x1,y0,g));
+      if(!inDir(nb.down[0],nb.down[1])) strokes.push(line(x0,y1,x1,y1,g));
+      if(!inDir(nb.left[0],nb.left[1])) strokes.push(line(x0,y0,x0,y1,g));
+      if(!inDir(nb.right[0],nb.right[1])) strokes.push(line(x1,y0,x1,y1,g));
+    });
+  });
+
+  function line(a,b,c,d,g){
+    return `<line data-gid="${g.id}" x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="${g.color}" stroke-width="2.6" stroke-linecap="round"/>`;
+  }
+
+  const svg=`<svg class="kmap-overlay" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${fills.join('')}${strokes.join('')}</svg>`;
+
+  wrap.innerHTML=heads+cells+svg;
+  wrap.querySelectorAll('.kmap-cell').forEach(d=>{
+    d.addEventListener('click',()=>applyBrush(+d.dataset.m));
+  });
+
+  document.getElementById('kmapCaption').textContent=
+    `行变量 ${L.rowVars.join(', ')} · 列变量 ${L.colVars.join(', ')} · 边缘相邻（可环绕）`;
+
+  return groups;
+}
+
+function renderExpr(){
+  const {ones,primes,cover}=ANALYSIS;
+  const groups=buildGroups();
+  const n=state.n;
+
+  const canon = ones.length===0 ? '0' : `&Sigma;m(${ones.join(', ')})`;
+  let minHTML,minLits=0;
+  if(cover.length===0){
+    minHTML='0';
+  }else if(cover.length===1&&primes[cover[0]].pattern.every(v=>v===-1)){
+    minHTML='1';
+  }else{
+    minHTML=cover.map(i=>productHTML(primes[i].pattern)).join('<span class="sum"> + </span>');
+    cover.forEach(i=>{ minLits+=primes[i].pattern.filter(v=>v!==-1).length; });
+  }
+
+  let groupRows='';
+  if(groups.length===0){
+    groupRows='<div class="empty">没有 1 可圈组（F 恒为 0）</div>';
+  }else{
+    groups.forEach(g=>{
+      const size=g.cells.length;
+      const fixed=g.pattern.filter(v=>v!==-1).length;
+      groupRows+=`<div class="group-item${g.used?'':' unused'}" data-gid="${g.id}">
+        <span class="swatch" style="background:${g.color}"></span>
+        <span>${productHTML(g.pattern)}</span>
+        <span class="meta">${size} 格 · ${n-fixed} 变量被消去</span>
+      </div>`;
+    });
+  }
+
+  const onesCount=ones.length;
+  const xCount=state.cells.filter(v=>v==='x').length;
+
+  document.getElementById('expr').innerHTML=`
+    <div class="row"><span class="k">标准与或式（最小项之和）</span>
+      <div class="formula">F = <span class="sum">${canon}</span></div></div>
+    <div class="row"><span class="k">最小与或式（化简结果）</span>
+      <div class="formula">F = ${minHTML}
+        ${cover.length?`<span class="pill">${minLits} 个文字</span>`:''}</div></div>
+    <div class="row"><span class="k">圈组（蕴含项）</span>
+      <div class="grouplist">${groupRows}</div></div>
+    <div class="hint">共 ${onesCount} 个 1${xCount?` · ${xCount} 个无关项 X`:''}。
+      圈组越大，能消去的变量越多；无关项 X 可自由当作 1 使用。</div>
+  `;
+
+  document.querySelectorAll('.group-item').forEach(el=>{
+    el.addEventListener('mouseenter',()=>{state.hovered=+el.dataset.gid;updateHighlight();});
+    el.addEventListener('mouseleave',()=>{state.hovered=null;updateHighlight();});
+  });
+}
+
+function updateHighlight(){
+  document.querySelectorAll('#kmap .kmap-overlay [data-gid]').forEach(el=>{
+    if(state.hovered!==null && +el.dataset.gid!==state.hovered){
+      el.classList.add('dim');
+    }else{
+      el.classList.remove('dim');
+    }
+  });
+}
+
+function renderAll(){
+  ANALYSIS=analyze();
+  const groups=buildGroups();
+  renderTruth();
+  renderKMap(groups);
+  renderExpr();
+  updateHighlight();
+}
+
+function setVarCount(n){
+  state.n=n;
+  state.cells=new Array(1<<n).fill('0');
+  document.querySelectorAll('#varGroup button').forEach(b=>b.classList.toggle('active',+b.dataset.n===n));
+  renderAll();
+}
+
+function applyPreset(key){
+  const total=1<<state.n;
+  if(key==='zero') state.cells=new Array(total).fill('0');
+  else if(key==='one') state.cells=new Array(total).fill('1');
+  else if(key==='random') state.cells=Array.from({length:total},()=>Math.random()<.5?'1':'0');
+  else if(key==='checker'){
+    state.cells=Array.from({length:total},(_,m)=>{
+      let p=0,t=m;
+      while(t){p^=t&1;t>>=1;}
+      return p===0?'1':'0';
+    });
+  }
+  else if(key==='half') state.cells=Array.from({length:total},(_,m)=>m<total/2?'1':'0');
+  else if(key==='pair') state.cells=Array.from({length:total},(_,m)=>m<2?'1':'0');
+  renderAll();
+}
+
+document.querySelectorAll('#varGroup button').forEach(b=>{
+  b.addEventListener('click',()=>setVarCount(+b.dataset.n));
+});
+document.querySelectorAll('#brushGroup button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    state.brush=b.dataset.brush;
+    document.querySelectorAll('#brushGroup button').forEach(x=>x.classList.toggle('active',x===b));
+  });
+});
+document.getElementById('presetSel').addEventListener('change',e=>{
+  if(e.target.value){applyPreset(e.target.value);e.target.value='';}
+});
+document.getElementById('clearBtn').addEventListener('click',()=>applyPreset('zero'));
+document.getElementById('primesBtn').addEventListener('click',e=>{
+  state.showAllPrimes=!state.showAllPrimes;
+  e.target.classList.toggle('active',state.showAllPrimes);
+  renderAll();
+});
+
+document.querySelector('#brushGroup button[data-brush="toggle"]').classList.add('active');
+document.querySelectorAll('#varGroup button').forEach(b=>b.classList.toggle('active',+b.dataset.n===state.n));
+renderAll();
+</script>
+</body>
+</html>
